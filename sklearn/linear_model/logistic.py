@@ -122,7 +122,7 @@ def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None, positive=False):
         sample_weight = np.ones(n_samples)
 
     # Logistic loss is the negative of the log of the logistic function.
-    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w) + np.sum(w - np.abs(w))
+    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w)
 
     z = expit(yz)
     z0 = sample_weight * (z - 1) * y
