@@ -78,7 +78,7 @@ def _intercept_dot(w, X, y):
     return w, c, yz
 
 
-def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
+def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None, positive=False):
     """Computes the logistic loss and gradient.
 
     Parameters
@@ -108,6 +108,12 @@ def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
         Logistic gradient.
     """
     n_samples, n_features = X.shape
+    if positive:
+        mask = w <= 0
+        if w.size == n_features + 1:
+            mask[-1] = False
+        # Set all negative coefficients to 0
+        w[mask] = 0
     grad = np.empty_like(w)
 
     w, c, yz = _intercept_dot(w, X, y)
@@ -116,7 +122,7 @@ def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
         sample_weight = np.ones(n_samples)
 
     # Logistic loss is the negative of the log of the logistic function.
-    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w)
+    out = -np.sum(sample_weight * log_logistic(yz)) + .5 * alpha * np.dot(w, w) + np.sum(w - np.abs(w))
 
     z = expit(yz)
     z0 = sample_weight * (z - 1) * y
@@ -126,6 +132,10 @@ def _logistic_loss_and_grad(w, X, y, alpha, sample_weight=None):
     # Case where we fit the intercept.
     if grad.shape[0] > n_features:
         grad[-1] = z0.sum()
+
+    # Constrain gradient to produce only non-negative coefficients
+    if positive:
+        grad[mask & (grad>0)] = 0.0
     return out, grad
 
 
@@ -480,7 +490,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                              intercept_scaling=1., multi_class='auto',
                              random_state=None, check_input=True,
                              max_squared_sum=None, sample_weight=None,
-                             l1_ratio=None):
+                             l1_ratio=None, positive=False):
     """Compute a Logistic Regression model for a list of regularization
     parameters.
 
@@ -640,7 +650,7 @@ def logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
         tol=1e-4, verbose=0, solver='lbfgs', coef=None, class_weight=None,
         dual=False, penalty='l2', intercept_scaling=1., multi_class='auto',
         random_state=None, check_input=True, max_squared_sum=None,
-        sample_weight=None, l1_ratio=None)
+        sample_weight=None, l1_ratio=None, positive=False)
 
 
 def _logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
@@ -650,7 +660,7 @@ def _logistic_regression_path(X, y, pos_class=None, Cs=10, fit_intercept=True,
                               intercept_scaling=1., multi_class='auto',
                               random_state=None, check_input=True,
                               max_squared_sum=None, sample_weight=None,
-                              l1_ratio=None):
+                              l1_ratio=None, positive=False):
     """Compute a Logistic Regression model for a list of regularization
     parameters.
 
@@ -1428,7 +1438,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
                  fit_intercept=True, intercept_scaling=1, class_weight=None,
                  random_state=None, solver='lbfgs', max_iter=100,
                  multi_class='auto', verbose=0, warm_start=False, n_jobs=None,
-                 l1_ratio=None):
+                 l1_ratio=None, positive=False):
 
         self.penalty = penalty
         self.dual = dual
@@ -1585,7 +1595,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin,
                       class_weight=self.class_weight, check_input=False,
                       random_state=self.random_state, coef=warm_start_coef_,
                       penalty=penalty, max_squared_sum=max_squared_sum,
-                      sample_weight=sample_weight)
+                      sample_weight=sample_weight, positive=positive)
             for class_, warm_start_coef_ in zip(classes_, warm_start_coef))
 
         fold_coefs_, _, n_iter_ = zip(*fold_coefs_)
@@ -1931,7 +1941,7 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
         self.random_state = random_state
         self.l1_ratios = l1_ratios
 
-    def fit(self, X, y, sample_weight=None):
+    def fit(self, X, y, sample_weight=None, positive=False):
         """Fit the model according to the given training data.
 
         Parameters
@@ -2062,7 +2072,8 @@ class LogisticRegressionCV(LogisticRegression, BaseEstimator,
                       random_state=self.random_state,
                       max_squared_sum=max_squared_sum,
                       sample_weight=sample_weight,
-                      l1_ratio=l1_ratio
+                      l1_ratio=l1_ratio,
+                      positive=positive
                       )
             for label in iter_encoded_labels
             for train, test in folds
